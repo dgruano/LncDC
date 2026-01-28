@@ -24,6 +24,8 @@ from imblearn.over_sampling import SMOTE
 from imblearn.under_sampling import RandomUnderSampler
 import train_SIF_PF_extraction
 
+from utils import load_precomputed_ss
+
 seed = 666
 
 def file_exist(filename,parser):
@@ -108,6 +110,8 @@ def under_over_process(x, y, njobs):
     x_resampled, y_resampled = smote.fit_resample(x_underSampled, y_underSampled)
     return x_resampled, y_resampled
 
+
+
 def main():
     parser = argparse.ArgumentParser(description='LncDC: a machine learning based tool for long non-coding RNA detection from RNA-Seq data')
     parser.add_argument('-v','--version', action = 'version', version = '%(prog)s version:1.3.5')
@@ -122,6 +126,7 @@ def main():
                         action = "store_true")
     parser.add_argument('-t','--thread', help = '(Optional) The number of threads assigned to use. Set -1 to use all cpus. Default value: -1.',
                         type = int, default = -1)
+    parser.add_argument('-s','--ss_file', type = bool, help = '(Optional) Flag to indicate that input mRNA and lncRNA files are SS files', required = False, default = False)
 
     args = parser.parse_args()
     mrna = args.mrna
@@ -129,6 +134,7 @@ def main():
     lncrna = args.lncrna
     ss_feature = args.secondary
     output_prefix = args.output
+    ss_file = args.ss_file
 
     thread = args.thread
     if thread == -1:
@@ -163,8 +169,15 @@ def main():
     if not os.path.isfile(output_prefix):
         os.makedirs(os.path.dirname(output_prefix), exist_ok = True)
 
-    # load mrna data
-    mrna_data = load_fasta(mrna)
+    if not ss_file:
+        # load mrna data
+        mrna_data = load_fasta(mrna)
+    else:
+        # Load pre-calculated secondary structures
+        print("Loading pre-calculated secondary structures for mRNA ...")
+        mrna_data, mrna_ss = load_precomputed_ss(mrna)
+        pass
+
     # load cds data
     cds_data = load_fasta(cds)
     
@@ -176,9 +189,16 @@ def main():
         mrna_dataset.loc[i, 'Sequence'] = mrna_data[i]
         mrna_dataset.loc[i,'type'] = 'mrna'
         mrna_dataset.loc[i, 'CDS_seq'] = cds_data[i]
+        # TODO: If SS data is loaded, cds may not match. We need to make sure they do match beforehand.
 
-    # load lncrna data
-    lncrna_data = load_fasta(lncrna)
+    if not ss_file:
+        # load lncrna data
+        lncrna_data = load_fasta(lncrna)
+    else:
+        # Load pre-calculated secondary structures
+        print("Loading pre-calculated secondary structures for lncRNA ...")
+        lncrna_data, lncrna_ss = load_precomputed_ss(lncrna)
+        pass
 
     # initialize a lncrna dataframe
     lncrna_dataset = pd.DataFrame(index=range(len(lncrna_data)), columns=['Sequence', 'type', 'CDS_seq'])

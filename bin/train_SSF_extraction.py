@@ -213,10 +213,15 @@ def feature_extract_kmer(dataset, thread, feature, mrna_mer, lncrna_mer):
         dataset = pd.concat(pool.map(parallel_function, df_chunks), ignore_index = False)
     return dataset
 
-def ssf_extract(dataset, thread, output_table):
+def ssf_extract(dataset, thread, output_table, secondary_structure=None):
     # extract the secondary structure of a transcript
-    print("Calculating secondary structures of the transcripts by RNAfold ... (This process may take a long time!)")
-    dataset = feature_extract_ss(dataset, thread, run_rnafold_parallel)
+    if secondary_structure is None:
+        print("Calculating secondary structures of the transcripts by RNAfold ... (This process may take a long time!)")
+        dataset = feature_extract_ss(dataset, thread, run_rnafold_parallel)
+    else:
+        print("Loading pre-calculated secondary structures ...")
+        # TODO: Check if we should merge in index
+        dataset['Secondary_structure'] = secondary_structure
     
     print("Generating sequence and secondary structure k-mer tables ...")
     # make ss kmer tables

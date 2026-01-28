@@ -19,6 +19,8 @@ import numpy as np
 import SIF_PF_extraction
 import argparse
 
+from utils import load_precomputed_ss
+
 def file_check(filename, rule, filetype):
     if not filename.endswith(rule):
         sys.stderr.write("ERROR: Please use the "+filetype+ " file, which ends with: "+ rule +" \n")
@@ -108,6 +110,7 @@ def main():
                         type = str, default = default_data_path+'train_ss_table')
     parser.add_argument('-t','--thread', help = '(Optional) The number of threads assigned to use. Set -1 to use all cpus. Default value: -1.',
                         type = int, default = -1)
+    parser.add_argument('-s','--ss_file', type = bool, help = '(Optional) Flag to indicate that input mRNA and lncRNA files are SS files', required = False, default = False)
 
     args = parser.parse_args()
     inputfile = args.input
@@ -118,6 +121,7 @@ def main():
     scaler = args.scaler
     ss_feature = args.secondary
     ss_kmer_file = args.kmer
+    ss_file = args.ss_file
 
     thread = args.thread
     if thread == -1:
@@ -204,7 +208,13 @@ def main():
     if not os.path.isfile(outputfile):
         os.makedirs(os.path.dirname(outputfile), exist_ok = True)
     
-    test_data = load_fasta(inputfile)
+    if not ss_file:
+        print("Loading input fasta file ...")
+        test_data = load_fasta(inputfile)
+    else:
+        print("Loading input secondary structure file ...")
+        # Load pre-calculated secondary structures
+        test_data, test_ss = load_precomputed_ss(inputfile)
     
     print()
     print("Initializing dataframe ...")
@@ -387,7 +397,8 @@ def main():
         # extract SSF features
         dataset = SSF_extraction.ssf_extract(dataset, thread, mrna_1mer, lncrna_1mer,
                                              mrna_2mer, lncrna_2mer, mrna_3mer, lncrna_3mer,
-                                             mrna_4mer, lncrna_4mer, mrna_5mer, lncrna_5mer)
+                                             mrna_4mer, lncrna_4mer, mrna_5mer, lncrna_5mer,
+                                             secondary_structure=test_ss)
 
         full_columns = ['Description', 'Transcript_length', 'GC_content', 'Fickett_score', 'ORF_T0_length',
                    'ORF_T1_length','ORF_T2_length', 'ORF_T0_coverage', 'ORF_T1_coverage', 'ORF_T3_coverage',
