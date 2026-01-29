@@ -34,15 +34,27 @@ def load_fasta(filename):
 
 def load_precomputed_ss(ss_file):
     seqs_plus_ss = load_fasta(ss_file)
-    pattern = r"([acgtnACGTN]+)([\.()]+)(-?\d+(\.\d+)?)$"
+    pattern = r"([acgtunACGTUN]+)([\.()]+)(-?\d+(\.\d+)?)$"
     sequences = []
     secondary_structures = []
-    for entry in seqs_plus_ss:
+    invalid_count = 0
+    for idx, entry in enumerate(seqs_plus_ss):
         match = re.match(pattern, entry)
         if match:
-            sequences.append(match.group(1).replace('a','A').replace('t','T').replace('g','G').replace('c','C'))
-            secondary_structures.append(match.group(2))
+            seq = match.group(1).upper().replace('U', 'T')
+            ss = match.group(2)
+            if len(seq) != len(ss):
+                print(f"[load_precomputed_ss] WARNING: Sequence/structure length mismatch at entry {idx}: seq_len={len(seq)}, ss_len={len(ss)}\nSequence: {seq[:50]}...\nStructure: {ss[:50]}...")
+                invalid_count += 1
+                continue
+            sequences.append(seq)
+            secondary_structures.append(ss)
         else:
-            sys.stderr.write("ERROR: The format of the secondary structure file is incorrect! \n")
-            sys.exit(1)
+            print(f"[load_precomputed_ss] ERROR: Format error at entry {idx}: {entry}")
+            invalid_count += 1
+            continue
+    print(f"[load_precomputed_ss] Loaded {len(sequences)} valid entries, {invalid_count} invalid entries skipped.")
+    if len(sequences) == 0:
+        sys.stderr.write("ERROR: No valid sequence/structure pairs loaded from file!\n")
+        sys.exit(1)
     return sequences, secondary_structures

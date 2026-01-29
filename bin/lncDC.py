@@ -208,13 +208,15 @@ def main():
     if not os.path.isfile(outputfile):
         os.makedirs(os.path.dirname(outputfile), exist_ok = True)
     
-    if not ss_file:
-        print("Loading input fasta file ...")
-        test_data = load_fasta(inputfile)
-    else:
+    if ss_file:
         print("Loading input secondary structure file ...")
         # Load pre-calculated secondary structures
         test_data, test_ss = load_precomputed_ss(inputfile)
+        print("Total Number of secondary structures loaded: " + str(test_ss.index.size))
+        print("NOTE: Secondary structures will be filtered to match valid sequences (i.e., only sequences with A,T,G,C and length between 200 and 20000 nt are kept).")
+    if not ss_file:
+        print("Loading input fasta file ...")
+        test_data = load_fasta(inputfile)
     
     print()
     print("Initializing dataframe ...")
@@ -230,6 +232,8 @@ def main():
     for i in range(dataset.index.size):
         if len(re.findall(r'[^ATGC]',dataset.loc[i,'Sequence'])) > 0:
             dataset.loc[i,'Sequence'] = float('NaN')
+            if ss_file:
+                test_ss.loc[i] = float('NaN')
     dataset.dropna(how = 'any', inplace = True)
     # reset the index of the dataframe
     dataset.reset_index(drop = True, inplace = True)
@@ -258,6 +262,7 @@ def main():
         # print()
         dataset = dataset[dataset['Transcript_length'] >= 200]
         dataset = dataset.reset_index(drop=True)
+
         
         print("Removing Non-valid transcripts (sequence that have non-ATGCatgc letters & sequence length less than 200 nt) ...")
         print("Number of valid transcripts: " + str(dataset.index.size))
@@ -314,6 +319,10 @@ def main():
         # Filter out sequence length less than 200nt or more than 20000nt
         dataset = dataset[(dataset['Transcript_length'] >= 200) & (dataset['Transcript_length'] <= 20000)]
         dataset = dataset.reset_index(drop=True)
+
+        if ss_data is not None:
+            ss_data = ss_data[ss_data.str.len().between(200, 20000)]
+            ss_data = ss_data.reset_index(drop=True)
         
         print("Removing Non-valid transcripts (sequence that have non-ATGCatgc" + " letters & sequence length less than 200 nt) ...")
         print("Filtering out transcripts with sequence length greater than 20,000" + "nt due to the limited addressable range of the RNAfold program ...")
