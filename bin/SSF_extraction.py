@@ -183,10 +183,14 @@ def feature_extract_kmer(dataset, thread, feature, mrna_mer, lncrna_mer):
     return dataset
 
 def ssf_extract(dataset, thread, mrna_1mer, lncrna_1mer, mrna_2mer, lncrna_2mer,
-                mrna_3mer, lncrna_3mer, mrna_4mer, lncrna_4mer, mrna_5mer, lncrna_5mer):
+                mrna_3mer, lncrna_3mer, mrna_4mer, lncrna_4mer, mrna_5mer, lncrna_5mer, secondary_structure=None):
     # extract the secondary structure of a transcript
-    print("Calculating secondary structures of the transcripts by RNAfold ... (This process may take a long time!)")
-    dataset = feature_extract_ss(dataset, thread, run_rnafold_parallel)
+    if secondary_structure is None:
+        print("Calculating secondary structures of the transcripts by RNAfold ... (This process may take a long time!)")
+        dataset = feature_extract_ss(dataset, thread, run_rnafold_parallel)
+    else:
+        print("Using pre-calculated secondary structures")
+        dataset['Secondary_structure'] = secondary_structure
     
     print("Extracting SSF features ...")
     # feature 1: Secondary structure score of kmer 1
