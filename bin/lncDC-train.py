@@ -24,6 +24,8 @@ from imblearn.over_sampling import SMOTE
 from imblearn.under_sampling import RandomUnderSampler
 import train_SIF_PF_extraction
 
+from utils import load_precomputed_ss
+
 seed = 666
 
 def file_exist(filename,parser):
@@ -108,6 +110,8 @@ def under_over_process(x, y, njobs):
     x_resampled, y_resampled = smote.fit_resample(x_underSampled, y_underSampled)
     return x_resampled, y_resampled
 
+
+
 def main():
     parser = argparse.ArgumentParser(description='LncDC: a machine learning based tool for long non-coding RNA detection from RNA-Seq data')
     parser.add_argument('-v','--version', action = 'version', version = '%(prog)s version:1.3.5')
@@ -122,6 +126,7 @@ def main():
                         action = "store_true")
     parser.add_argument('-t','--thread', help = '(Optional) The number of threads assigned to use. Set -1 to use all cpus. Default value: -1.',
                         type = int, default = -1)
+    parser.add_argument('--ss_file', type = bool, help = '(Optional) Flag to indicate that input mRNA and lncRNA files are SS files', required = False, default = False)
 
     args = parser.parse_args()
     mrna = args.mrna
@@ -129,6 +134,7 @@ def main():
     lncrna = args.lncrna
     ss_feature = args.secondary
     output_prefix = args.output
+    ss_file = args.ss_file
 
     thread = args.thread
     if thread == -1:
@@ -163,10 +169,17 @@ def main():
     if not os.path.isfile(output_prefix):
         os.makedirs(os.path.dirname(output_prefix), exist_ok = True)
 
-    # load mrna data
-    mrna_data = load_fasta(mrna)
     # load cds data
     cds_data = load_fasta(cds)
+
+    if ss_file:
+        # Load pre-calculated secondary structures
+        print("Loading pre-calculated secondary structures for mRNA ...")
+        mrna_data, mrna_ss = load_precomputed_ss(mrna)
+        cds_data = [cds.upper().replace('U', 'T') for cds in cds_data]
+    else:
+        # load mrna data
+        mrna_data = load_fasta(mrna)
     
     print()
     print("Initializing dataframe ...")
@@ -177,8 +190,17 @@ def main():
         mrna_dataset.loc[i,'type'] = 'mrna'
         mrna_dataset.loc[i, 'CDS_seq'] = cds_data[i]
 
-    # load lncrna data
-    lncrna_data = load_fasta(lncrna)
+    if ss_file:
+        # Load pre-calculated secondary structures
+        print("Loading pre-calculated secondary structures for lncRNA ...")
+        lncrna_data, lncrna_ss = load_precomputed_ss(lncrna)
+        ss_data = pd.concat([pd.Series(mrna_ss), pd.Series(lncrna_ss)], ignore_index=True)
+        print("Total Number of secondary structures loaded: " + str(ss_data.index.size))
+        print("NOTE: Secondary structures will be filtered to match valid sequences (i.e., only sequences with A,T,G,C and length between 200 and 20000 nt are kept).")
+    else:
+        # load lncrna data
+        lncrna_data = load_fasta(lncrna)
+        ss_data = None
 
     # initialize a lncrna dataframe
     lncrna_dataset = pd.DataFrame(index=range(len(lncrna_data)), columns=['Sequence', 'type', 'CDS_seq'])
@@ -198,12 +220,15 @@ def main():
     for i in range(dataset.index.size):
         if len(re.findall(r'[^ATGC]',dataset.loc[i,'Sequence'])) > 0:
             dataset.loc[i,'Sequence'] = float('NaN')
+            if ss_data is not None:
+                ss_data.loc[i] = float('NaN')
     dataset.dropna(how = 'any', inplace = True)
     # reset the index of the dataframe
     dataset.reset_index(drop = True, inplace = True)
 
     print("Calculating transcript lengths ...")
     print()
+    print(dataset.head())
     # Calculate the length of the transcripts
     for i in range(dataset.index.size):
         dataset.loc[i,'Transcript_length'] = len(dataset.loc[i, 'Sequence'])
@@ -216,6 +241,7 @@ def main():
 
         print("Removing Non-valid transcripts (sequence that have non-ATGCatgc letters & sequence length less than 200 nt) ...")
         print("Number of valid transcripts for training: " + str(dataset.index.size))
+
         
         if dataset.index.size == 0:
             sys.stderr.write("No valid transcripts detected! \n")
@@ -289,6 +315,10 @@ def main():
         dataset = dataset[(dataset['Transcript_length'] >= 200) & (dataset['Transcript_length'] <= 20000)]
         dataset = dataset.reset_index(drop=True)
 
+        if ss_data is not None:
+            ss_data = ss_data[ss_data.str.len().between(200, 20000)]
+            ss_data = ss_data.reset_index(drop=True)
+
         print("Removing Non-valid transcripts (sequence that have non-ATGCatgc" + " letters & sequence length less than 200 nt) ...")
         print("Filtering out transcripts with sequence length greater than 20,000" + "nt due to the limited addressable range of the RNAfold program ...")
         
@@ -312,7 +342,7 @@ def main():
         dataset = dataset[columns]
 
         # extract Secondary Structure Features
-        dataset = train_SSF_extraction.ssf_extract(dataset, thread, output_prefix)
+        dataset = train_SSF_extraction.ssf_extract(dataset, thread, output_prefix, secondary_structure=ss_data)
         full_columns = ['type', 'Transcript_length', 'GC_content', 'Fickett_score', 'ORF_T0_length',
                    'ORF_T1_length','ORF_T2_length', 'ORF_T0_coverage', 'ORF_T1_coverage', 'ORF_T3_coverage',
                    'Hexamer_score_ORF_T0','Hexamer_score_ORF_T1', 'Hexamer_score_ORF_T2', 'Hexamer_score_ORF_T3',

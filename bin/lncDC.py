@@ -19,6 +19,8 @@ import numpy as np
 import SIF_PF_extraction
 import argparse
 
+from utils import load_precomputed_ss
+
 def file_check(filename, rule, filetype):
     if not filename.endswith(rule):
         sys.stderr.write("ERROR: Please use the "+filetype+ " file, which ends with: "+ rule +" \n")
@@ -108,6 +110,8 @@ def main():
                         type = str, default = default_data_path+'train_ss_table')
     parser.add_argument('-t','--thread', help = '(Optional) The number of threads assigned to use. Set -1 to use all cpus. Default value: -1.',
                         type = int, default = -1)
+    parser.add_argument('--ss_file', help = '(Optional) Flag to indicate that input mRNA and lncRNA files are SS files',
+                        action = "store_true", default = False, required = False)
 
     args = parser.parse_args()
     inputfile = args.input
@@ -118,6 +122,7 @@ def main():
     scaler = args.scaler
     ss_feature = args.secondary
     ss_kmer_file = args.kmer
+    ss_file = args.ss_file
 
     thread = args.thread
     if thread == -1:
@@ -204,7 +209,17 @@ def main():
     if not os.path.isfile(outputfile):
         os.makedirs(os.path.dirname(outputfile), exist_ok = True)
     
-    test_data = load_fasta(inputfile)
+    if ss_file:
+        print("Loading input secondary structure file ...")
+        # Load pre-calculated secondary structures
+        test_data, test_ss = load_precomputed_ss(inputfile, with_description=True)
+        ss_data = pd.Series(test_ss)
+        print("Total Number of secondary structures loaded: " + str(len(test_ss)))
+        print("NOTE: Secondary structures will be filtered to match valid sequences (i.e., only sequences with A,T,G,C and length between 200 and 20000 nt are kept).")
+    else:
+        print("Loading input fasta file ...")
+        test_data = load_fasta(inputfile)
+        ss_data = None
     
     print()
     print("Initializing dataframe ...")
@@ -217,12 +232,17 @@ def main():
     print("Total Number of transcripts loaded: " + str(dataset.index.size))
     
     # remove the sequences that have non [ATGC] inside
+    print("Removing sequences with non-ATGC letters ...")
     for i in range(dataset.index.size):
         if len(re.findall(r'[^ATGC]',dataset.loc[i,'Sequence'])) > 0:
             dataset.loc[i,'Sequence'] = float('NaN')
+            if ss_file:
+                ss_data.loc[i] = float('NaN')
     dataset.dropna(how = 'any', inplace = True)
     # reset the index of the dataframe
     dataset.reset_index(drop = True, inplace = True)
+
+    print("Number of valid transcripts (with A,T,G,C only): " + str(dataset.index.size))
     
     print("Calculating transcript lengths ...")
     print()
@@ -248,6 +268,7 @@ def main():
         # print()
         dataset = dataset[dataset['Transcript_length'] >= 200]
         dataset = dataset.reset_index(drop=True)
+
         
         print("Removing Non-valid transcripts (sequence that have non-ATGCatgc letters & sequence length less than 200 nt) ...")
         print("Number of valid transcripts: " + str(dataset.index.size))
@@ -304,6 +325,13 @@ def main():
         # Filter out sequence length less than 200nt or more than 20000nt
         dataset = dataset[(dataset['Transcript_length'] >= 200) & (dataset['Transcript_length'] <= 20000)]
         dataset = dataset.reset_index(drop=True)
+        print(f"Transcripts: {len(dataset)}")
+
+        if ss_data is not None:
+            # Filter secondary structure data to match valid sequences
+            ss_data = ss_data[ss_data.str.len().between(200, 20000)]
+            ss_data = ss_data.reset_index(drop=True)
+            print(f"Secondary structures: {len(ss_data)}")
         
         print("Removing Non-valid transcripts (sequence that have non-ATGCatgc" + " letters & sequence length less than 200 nt) ...")
         print("Filtering out transcripts with sequence length greater than 20,000" + "nt due to the limited addressable range of the RNAfold program ...")
@@ -387,7 +415,8 @@ def main():
         # extract SSF features
         dataset = SSF_extraction.ssf_extract(dataset, thread, mrna_1mer, lncrna_1mer,
                                              mrna_2mer, lncrna_2mer, mrna_3mer, lncrna_3mer,
-                                             mrna_4mer, lncrna_4mer, mrna_5mer, lncrna_5mer)
+                                             mrna_4mer, lncrna_4mer, mrna_5mer, lncrna_5mer,
+                                             secondary_structure=ss_data)
 
         full_columns = ['Description', 'Transcript_length', 'GC_content', 'Fickett_score', 'ORF_T0_length',
                    'ORF_T1_length','ORF_T2_length', 'ORF_T0_coverage', 'ORF_T1_coverage', 'ORF_T3_coverage',
